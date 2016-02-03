@@ -1,5 +1,6 @@
 var _ = require('lodash');
 var debug = require('debug')('particle-bot');
+var moment = require('moment');
 var Particle = require('spark');
 var TelegramBot = require('node-telegram-bot-api');
 var EventSource = require('eventsource');
@@ -45,7 +46,7 @@ function listDevices(msg) {
       message += '\n   *' + value + '*';
     });
     message += "\n\nPlease pick the one I'll bridge to..."
-    return bot.sendMessage(msg.from.id, message, keyboards.deviceNames(response))
+    return bot.sendMessage(msg.from.id, message, keyboards.devices(response))
     .then(bot.waitResponse(msg, 10000))
     .then(function(msg) { return open(msg, [msg.text]); })
     .catch(function() { return bot.sendMessage(msg.from.id, "Are you lazy or what?", keyboards.commands); });
@@ -59,7 +60,7 @@ function open(msg, args) {
     if (client.device.id) {
       return bot.sendMessage(msg.from.id, 'Ok, now talking to *' + client.device.name + '* on your behalf', keyboards.commands);
     } else {
-      return bot.sendMessage(msg.from.id, 'Device *' + client.device.name + '* not found: did you pick one from the list?', { parse_mode: 'markdown' });
+      return bot.sendMessage(msg.from.id, 'Device *' + client.device.name + '* not found: did you pick one from the list?', keyboards.commands);
     }
   };
 
@@ -83,10 +84,10 @@ function info(msg) {
   
   return client.getDevice(client.device.id)
   .then(function(device) {
-    return bot.sendMessage(msg.from.id, templates.info(device), { parse_mode: 'markdown' });
+    return bot.sendMessage(msg.from.id, templates.info(device), keyboards.commands);
   })
   .catch(function(err) {
-    bot.sendMessage(msg.from.id, templates.error({device:client.device.name}));
+    bot.sendMessage(msg.from.id, templates.error.info({device:client.device.name}), keyboards.commands);
   });;
 };
 
@@ -97,6 +98,8 @@ function call(msg, args) {
   var fnArg = args.length >= 2 ? args[1] : undefined;
   var promise;
   if (args.length > 0) {
+    debug('Calling %s(%s) on %j', fnName, fnArg, client);
+
     promise = client.callFunction(client.device.id, fnName, fnArg)
     .then(function(response) {
       return bot.sendMessage(msg.from.id, response.return_value, _.defaults({ reply_to_message_id: msg.message_id }, keyboards.commands));
@@ -105,24 +108,26 @@ function call(msg, args) {
     promise = client.getAttributes(client.device.id)
     .then(function(device) {
       
-      return bot.sendMessage(msg.from.id, 'Select the function to invoke: ' + device.functions, keyboards.functions(device))
+      return bot.sendMessage(msg.from.id, 'Ok, which function do you want to call?\n' + device.functions, keyboards.functions(device))
       .then(bot.waitResponse(msg))
       .then(function(msg) {
         fnName = msg.text;
-        return bot.sendMessage(msg.from.id, 'Function argument value');
+        return bot.sendMessage(msg.from.id, 'Any argument value for me?', keyboards.standard);
       })
       .then(bot.waitResponse(msg))
       .then(function(msg) {
         fnArg = msg.text;
-        return client.callFunction(client.device.id, fnName, fnArg);
-      })
-      .then(function(response) {
-        return bot.sendMessage(msg.from.id, "Next time you want to invoke this function you can use\n/call `" + fnName + "` `" + fnArg + "`\nResponse was " + response.return_value, keyboards.commands);
+        client.callFunction(client.device.id, fnName, fnArg)
+        .then(function(response) {
+          return bot.sendMessage(msg.from.id, templates.call({device:client.device.name, name: fnName, arg: fnArg, value: response.return_value}), keyboards.commands);
+          //return call(msg, [fnName, fnArg]);
+        });
       });
     });
   }
   return promise.catch(function(err) {
-    bot.sendMessage(msg.from.id, templates.call.error({device:client.device.name, name: fnName, arg: fnArg}));
+    console.log(err)
+    bot.sendMessage(msg.from.id, templates.error.call({device:client.device.name, name: fnName, arg: fnArg}), keyboards.commands);
   });
 };
 
@@ -132,6 +137,7 @@ function read(msg, args) {
   var varName = args.length >= 1 ? args[0] : undefined;
   var promise;
   if (varName) {
+    debug('Getting variable %s from %j', varName, client);
     promise = client.getVariable(client.device.id, varName)
     .then(function(response) {
       return bot.sendMessage(msg.from.id, response.result, _.defaults({ reply_to_message_id: msg.message_id }, keyboards.commands));
@@ -140,19 +146,21 @@ function read(msg, args) {
     promise = client.getAttributes(client.device.id)
     .then(function(device) {
 
-      return bot.sendMessage(msg.from.id, 'Select the variable to get: ' + _.join(_.keys(device.variables)), keyboards.variables(device))
+      return bot.sendMessage(msg.from.id, 'Which variable should I get?\n' + _.join(_.keys(device.variables)), keyboards.variables(device))
       .then(bot.waitResponse(msg))
       .then(function(msg) {
         args[0] = varName = msg.text;
-        return read(msg, args);
-      })
-      .then(function(response) {
-        return bot.sendMessage(msg.from.id, "Next time you want to get this variable you can use\n`/read " + varName + "`", keyboards.commands);
+        client.getVariable(client.device.id, varName)
+        .then(function(response) {
+          return bot.sendMessage(msg.from.id, templates.read({device:client.device.name, name: varName, value: response.result}), keyboards.commands);
+        });
+        //return read(msg, args);
       });
     });
   }
   return promise.catch(function(err) {
-    bot.sendMessage(msg.from.id, templates.read.error({device:client.device.name}));
+    console.log(err)
+    bot.sendMessage(msg.from.id, templates.error.read({device:client.device.name, name: varName}), keyboards.commands);
   });
 };
 
@@ -163,7 +171,11 @@ function listen(msg, args) {
   if (client.eventListeners[eventName]) {
     bot.sendMessage(msg.from.id, templates.listen.already({event: eventName, device: client.device.name}), keyboards.commands);
   } else {
-
+    if (!eventName) {
+      //error
+    } else if (eventName == '*') {
+      // bot.sendMessage(msg.from.id, templates.listen.startAll({device: client.device.name}), keyboards.commands);
+    }
     var url = templates.url({device: client.device.id, event: eventName, accessToken: client.accessToken});
     var eventSource = client.eventListeners[eventName] = new EventSource(url);
 
@@ -179,7 +191,7 @@ function listen(msg, args) {
       debug('Event source error');
       bot.sendMessage(msg.from.id, templates.listen.error({event: eventName, device: client.device.name}), { parse_mode: 'markdown' });
     });
-    bot.sendMessage(msg.from.id, templates.listen.start({event: eventName, device: client.device.name}), keyboards.commands);
+    return bot.sendMessage(msg.from.id, templates.listen.start({event: eventName, device: client.device.name}), keyboards.commands);
   }
 };
 
@@ -187,19 +199,28 @@ function mute(msg, args) {
   var client = bridges[msg.chat.id + ',' + msg.from.id];
 
   var eventName = args.length > 0 ? args[0] : undefined;
+  if (!eventName) {
+    //error
+  } else if (eventName == '*') {
+    _.each(_.keys(client.eventListeners), function(event) {
+      client.eventListeners[eventName].close();
+      delete client.eventListeners[eventName];
+      return bot.sendMessage(msg.from.id, templates.listen.stopAll({device: client.device.name}), keyboards.commands);
+    });
+  }
   if (client.eventListeners[eventName]) {
     client.eventListeners[eventName].close();
     delete client.eventListeners[eventName];
 
-    bot.sendMessage(msg.from.id, templates.listen.stop({event: eventName, device: client.device.name}), keyboards.commands);
+    return bot.sendMessage(msg.from.id, templates.listen.stop({event: eventName, device: client.device.name}), keyboards.commands);
   } else {
-    bot.sendMessage(msg.from.id, templates.listen.never({event: eventName, device: client.device.name}), keyboards.commands);
+    return bot.sendMessage(msg.from.id, templates.listen.never({event: eventName, device: client.device.name}), keyboards.commands);
   }
 };
 
 var help = function (msg) {
   bot.sendMessage(msg.from.id, 
-    "Please tell me your access token using /token `your access token`\n\n" + 
+    "Please tell me your access token using `/token access-token`\n\n" + 
     "If you don't know your access token log in the [Particle build website](https://build.particle.io/login), your access token is available in the *settings* tab, the one with the gear icon.", 
     { parse_mode: 'markdown', disable_web_page_preview: true });
 }
@@ -260,11 +281,20 @@ var keyboards = {
   },
   template: {
     parse_mode: 'markdown',
+    resize_keyboard: true,
     reply_markup: { 
       keyboard: [], one_time_keyboard: true, selective: true 
     }
   },
+  standard: {
+    parse_mode: 'markdown',
+    reply_markup: {
+      hide_keyboard: true,
+      selective: true
+    }
+  },
   variables: function(device) {
+    console.log(device)
     var options = _.cloneDeep(this.template);
     options.reply_markup.keyboard = _.transform(_.keys(device.variables), function(result, val) { 
       if (result.length == 0 || result[result.length - 1].length == 2) {
@@ -282,7 +312,7 @@ var keyboards = {
     });
     return options;
   },
-  deviceNames: function(response) {
+  devices: function(response) {
     var options = _.cloneDeep(this.template);
     response.forEach(function (device) { options.reply_markup.keyboard.push([device.name]) });
     return options;
@@ -291,28 +321,39 @@ var keyboards = {
 
 _.templateSettings.evaluate = /%{([\s\S]+?)}/g;
 _.templateSettings.imports = {
-  'escape': function(string) { return string.replace(/([\*\[\]_`])/g,'\\$1') }
+  'moment': moment,
+  'escape': function(string) { 
+    if(string) {
+      if (typeof string != 'String')
+        string = String(string);
+      return string.replace(/([\*\[\]_`])/g,'\\$1');
+    }
+  }
 }
 
 var templates = {
   url: _.template("https://api.particle.io/v1/devices/${ device }/events/${ event }?access_token=${ accessToken }"),
   listen: {
     start: _.template("Ok, from now on I'll report here all events `${ event }` from device *%{ print(escape(device)) }*"),
+    start: _.template("Ok, from now on I'll report here any event from device *%{ print(escape(device)) }*"),
     stop:  _.template("I'm no more reporting to you events `${ event }` from device *%{ print(escape(device)) }*"),
+    stop:  _.template("All events from *%{ print(escape(device)) }* are going to be ignored. Are you happy now?"),
     error: _.template("`${ event }`@*%{ print(escape(device)) }*: `ERROR`"),
     data:  _.template("`${ event }`@*%{ print(escape(device)) }*: `${ data }`"),
     never: _.template("I wasn't listening for events `${ event }` from device *%{ print(escape(device)) }*"),
     already: _.template("I know, I was already listening for events `${ event }` from device *%{ print(escape(device)) }*")
   },
-  info: _.template("Device *%{ print(escape(name)) }*\n" +
+  read: _.template("Next time you want to get this variable you can use\n`/read ${ name }`\n\nCurrent value is *%{ print(escape(value)) }*"),
+  call: _.template("Next time you want to invoke this function you can use\n`/call ${ name } ${ arg }`\n\nResponse was *%{ print(escape(value)) }*"),
+  info: _.template("This is what I got on your *%{ print(escape(name)) }*\n" +
     "   id: _%{ print(escape(id)) }_\n" +
     "   connected: _${ connected }_\n" +
-    "   last connection: _${ lastHeard }_\n" +
+    "   last connection: _%{ print(moment.utc(lastHeard).fromNow()) }_\n" +
     "   last ip address: _${ lastIpAddress }_\n" +
     "   status: _${ status }_"),
-  error: _.template("I got an error from *%{ print(escape(name)) }*: should I _destroy it_? :smile:")
-}
-
-var escape = function(string) {
-  return string.replace(/([\*\[\]_`])/g,'\\$1')
+  error: {
+    generic: _.template("I got an error from *%{ print(escape(device)) }*: should I _destroy it_? :smile:"),
+    call: _.template("I got an error from *%{ print(escape(device)) }* while calling `${ name }(${ arg })`: that's the icing on the cake!"),
+    read: _.template("I got an error from *%{ print(escape(device)) }* while reading `${ name }`: the universe is going to break down!")
+  }
 }
