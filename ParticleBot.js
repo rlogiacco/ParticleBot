@@ -17,7 +17,7 @@ function addToken(msg, token) {
     bridges[msg.chat.id + ',' + msg.from.id] = client;
     bot.sendChatAction(msg.chat.id, "typing");
     return listDevices(msg).catch(function(err) {
-      bot.sendMessage(msg.from.id, 'Provided token is invalid, sorry.')
+      bot.sendMessage(msg.chat.id, 'Provided token is invalid, sorry.')
     });
   }
 };
@@ -31,7 +31,7 @@ function login(msg, credentials) {
       client.eventListeners = {};
       bridges[msg.chat.id + ',' + msg.from.id] = client;
       return listDevices(msg).catch(function(err) {
-        bot.sendMessage(msg.from.id, 'Provided credentials are invalid, sorry.')
+        bot.sendMessage(msg.chat.id, 'Provided credentials are invalid, sorry.')
       });
     });
   }
@@ -46,10 +46,10 @@ function listDevices(msg) {
       message += '\n   *' + value + '*';
     });
     message += "\n\nPlease pick the one I'll bridge to..."
-    return bot.sendMessage(msg.from.id, message, keyboards.devices(response))
+    return bot.sendMessage(msg.chat.id, message, keyboards.devices(response))
     .then(bot.waitResponse(msg, 10000))
     .then(function(msg) { return open(msg, [msg.text]); })
-    .catch(function() { return bot.sendMessage(msg.from.id, "Are you lazy or what?", keyboards.commands); });
+    .catch(function() { return bot.sendMessage(msg.chat.id, "Are you lazy or what?", keyboards.commands); });
   });
 };
 
@@ -58,18 +58,18 @@ function open(msg, args) {
   var setDevice = function(response, msg) {
     client.device = {id: _.find(response, {name: msg.text}).id, name: msg.text};
     if (client.device.id) {
-      return bot.sendMessage(msg.from.id, 'Ok, now talking to *' + client.device.name + '* on your behalf', keyboards.commands);
+      return bot.sendMessage(msg.chat.id, 'Ok, now talking to *' + client.device.name + '* on your behalf', keyboards.commands);
     } else {
-      return bot.sendMessage(msg.from.id, 'Device *' + client.device.name + '* not found: did you pick one from the list?', keyboards.commands);
+      return bot.sendMessage(msg.chat.id, 'Device *' + client.device.name + '* not found: did you pick one from the list?', keyboards.commands);
     }
   };
 
   if (!args || args.length == 0) {
     return client.listDevices().then(function(response) {
-      return bot.sendMessage(msg.from.id, 'Select a device: ' + _.join(_.map(response, 'name')), keyboards.deviceNames(response))
+      return bot.sendMessage(msg.chat.id, 'Select a device: ' + _.join(_.map(response, 'name')), keyboards.deviceNames(response))
       .then(bot.waitResponse(msg, 10000))
       .then(function(msg) { return setDevice(response, msg); })
-      .catch(function() { return bot.sendMessage(msg.from.id, "Are you lazy or what?", keyboards.commands); });;
+      .catch(function() { return bot.sendMessage(msg.chat.id, "Are you lazy or what?", keyboards.commands); });;
     });
   } else {
     return client.listDevices().then(function(response) {
@@ -84,10 +84,10 @@ function info(msg) {
   
   return client.getDevice(client.device.id)
   .then(function(device) {
-    return bot.sendMessage(msg.from.id, templates.info(device), keyboards.commands);
+    return bot.sendMessage(msg.chat.id, templates.info(device), keyboards.commands);
   })
   .catch(function(err) {
-    bot.sendMessage(msg.from.id, templates.error.info({device:client.device.name}), keyboards.commands);
+    bot.sendMessage(msg.chat.id, templates.error.info({device:client.device.name}), keyboards.commands);
   });;
 };
 
@@ -102,31 +102,31 @@ function call(msg, args) {
 
     promise = client.callFunction(client.device.id, fnName, fnArg)
     .then(function(response) {
-      return bot.sendMessage(msg.from.id, response.return_value, _.defaults({ reply_to_message_id: msg.message_id }, keyboards.commands));
+      return bot.sendMessage(msg.chat.id, response.return_value, _.defaults({ reply_to_message_id: msg.message_id }, keyboards.commands));
     });
   } else {
     promise = client.getAttributes(client.device.id)
     .then(function(device) {
       
-      return bot.sendMessage(msg.from.id, 'Ok, which function do you want to call?\n' + device.functions, keyboards.functions(device))
+      return bot.sendMessage(msg.chat.id, 'Ok, which function do you want to call?\n' + device.functions, keyboards.functions(device))
       .then(bot.waitResponse(msg))
       .then(function(msg) {
         fnName = msg.text;
-        return bot.sendMessage(msg.from.id, 'Any argument value for me?', keyboards.standard);
+        return bot.sendMessage(msg.chat.id, 'Any argument value for me?', keyboards.standard);
       })
       .then(bot.waitResponse(msg))
       .then(function(msg) {
         fnArg = msg.text;
         return client.callFunction(client.device.id, fnName, fnArg)
         .then(function(response) {
-          return bot.sendMessage(msg.from.id, templates.call({device:client.device.name, name: fnName, arg: fnArg, value: response.return_value}), keyboards.commands);
+          return bot.sendMessage(msg.chat.id, templates.call({device:client.device.name, name: fnName, arg: fnArg, value: response.return_value}), keyboards.commands);
           //return call(msg, [fnName, fnArg]);
         });
       });
     });
   }
   return promise.catch(function(err) {
-    bot.sendMessage(msg.from.id, templates.error.call({device:client.device.name, name: fnName, arg: fnArg}), keyboards.commands);
+    bot.sendMessage(msg.chat.id, templates.error.call({device:client.device.name, name: fnName, arg: fnArg}), keyboards.commands);
   });
 };
 
@@ -139,26 +139,26 @@ function read(msg, args) {
     debug('Getting variable %s from %j', varName, client);
     promise = client.getVariable(client.device.id, varName)
     .then(function(response) {
-      return bot.sendMessage(msg.from.id, response.result, _.defaults({ reply_to_message_id: msg.message_id }, keyboards.commands));
+      return bot.sendMessage(msg.chat.id, response.result, _.defaults({ reply_to_message_id: msg.message_id }, keyboards.commands));
     });
   } else {
     promise = client.getAttributes(client.device.id)
     .then(function(device) {
 
-      return bot.sendMessage(msg.from.id, 'Which variable should I get?\n' + _.join(_.keys(device.variables)), keyboards.variables(device))
+      return bot.sendMessage(msg.chat.id, 'Which variable should I get?\n' + _.join(_.keys(device.variables)), keyboards.variables(device))
       .then(bot.waitResponse(msg))
       .then(function(msg) {
         args[0] = varName = msg.text;
         return client.getVariable(client.device.id, varName)
         .then(function(response) {
-          return bot.sendMessage(msg.from.id, templates.read({device:client.device.name, name: varName, value: response.result}), keyboards.commands);
+          return bot.sendMessage(msg.chat.id, templates.read({device:client.device.name, name: varName, value: response.result}), keyboards.commands);
         });
         //return read(msg, args);
       });
     });
   }
   return promise.catch(function(err) {
-    bot.sendMessage(msg.from.id, templates.error.read({device:client.device.name, name: varName}), keyboards.commands);
+    bot.sendMessage(msg.chat.id, templates.error.read({device:client.device.name, name: varName}), keyboards.commands);
   });
 };
 
@@ -167,18 +167,18 @@ function listen(msg, args) {
 
   var eventName = (args.length > 0 ? args[0] : undefined);
   if (client.eventListeners[eventName]) {
-    bot.sendMessage(msg.from.id, templates.listen.already({event: eventName, device: client.device.name}), keyboards.commands);
+    bot.sendMessage(msg.chat.id, templates.listen.already({event: eventName, device: client.device.name}), keyboards.commands);
   } else {
     if (!eventName) {
       //error
     } else if (eventName == '*') {
-      // bot.sendMessage(msg.from.id, templates.listen.startAll({device: client.device.name}), keyboards.commands);
+      // bot.sendMessage(msg.chat.id, templates.listen.startAll({device: client.device.name}), keyboards.commands);
     }
     var url = templates.url({device: client.device.id, event: eventName, accessToken: client.accessToken});
     var eventSource = client.eventListeners[eventName] = new EventSource(url);
 
     eventSource.on(eventName, function(event) {
-      bot.sendMessage(msg.from.id, templates.listen.data({event: eventName, device: client.device.name, data: JSON.parse(event.data).data}), { parse_mode: 'markdown' })
+      bot.sendMessage(msg.chat.id, templates.listen.data({event: eventName, device: client.device.name, data: JSON.parse(event.data).data}), { parse_mode: 'markdown' })
       .catch(function(err) {
         debug('Disconnecting client %j', err);
         eventSource.close();
@@ -187,9 +187,9 @@ function listen(msg, args) {
     });
     eventSource.on('error', function() {
       debug('Event source error');
-      bot.sendMessage(msg.from.id, templates.listen.error({event: eventName, device: client.device.name}), { parse_mode: 'markdown' });
+      bot.sendMessage(msg.chat.id, templates.listen.error({event: eventName, device: client.device.name}), { parse_mode: 'markdown' });
     });
-    return bot.sendMessage(msg.from.id, templates.listen.start({event: eventName, device: client.device.name}), keyboards.commands);
+    return bot.sendMessage(msg.chat.id, templates.listen.start({event: eventName, device: client.device.name}), keyboards.commands);
   }
 };
 
@@ -203,21 +203,21 @@ function mute(msg, args) {
     _.each(_.keys(client.eventListeners), function(event) {
       client.eventListeners[eventName].close();
       delete client.eventListeners[eventName];
-      return bot.sendMessage(msg.from.id, templates.listen.stopAll({device: client.device.name}), keyboards.commands);
+      return bot.sendMessage(msg.chat.id, templates.listen.stopAll({device: client.device.name}), keyboards.commands);
     });
   }
   if (client.eventListeners[eventName]) {
     client.eventListeners[eventName].close();
     delete client.eventListeners[eventName];
 
-    return bot.sendMessage(msg.from.id, templates.listen.stop({event: eventName, device: client.device.name}), keyboards.commands);
+    return bot.sendMessage(msg.chat.id, templates.listen.stop({event: eventName, device: client.device.name}), keyboards.commands);
   } else {
-    return bot.sendMessage(msg.from.id, templates.listen.never({event: eventName, device: client.device.name}), keyboards.commands);
+    return bot.sendMessage(msg.chat.id, templates.listen.never({event: eventName, device: client.device.name}), keyboards.commands);
   }
 };
 
-var help = function (msg) {
-  bot.sendMessage(msg.from.id, 
+var help = function(msg) {
+  bot.sendMessage(msg.chat.id, 
     "Please tell me your access token using `/token access-token`\n\n" + 
     "If you don't know your access token log in the [Particle build website](https://build.particle.io/login), your access token is available in the *settings* tab, the one with the gear icon.", 
     { parse_mode: 'markdown', disable_web_page_preview: true });
@@ -225,15 +225,15 @@ var help = function (msg) {
 
 
 
-bot.onCommand('token', function (msg, args) {
+bot.onCommand('token', function(msg, args) {
   if (args[0]) {
     addToken(msg, args[0]);
   } else {
-    bot.sendMessage(msg.from.id, 'What is your access token?')
+    return bot.sendMessage(msg.chat.id, 'What is your access token?')
     .then(bot.waitResponse(msg, 60000))
     .then(function(msg) { addToken(msg, msg.text) })
     .catch(function(err) {
-      bot.sendMessage(msg.from.id, 'I can`t help you without a Particle access token, sorry.');
+      bot.sendMessage(msg.chat.id, 'I can`t help you without a Particle access token, sorry.');
     });
   }
 });
@@ -257,12 +257,12 @@ bot.onCommand('login', function (msg, args) {
   if (args.length == 2) {
     login(msg, args);
   } else {
-    bot.sendMessage(msg.from.id, 'Please provide your username and password on two lines')
+    bot.sendMessage(msg.chat.id, 'Please provide your username and password on two lines')
     .then(bot.waitResponse(msg, 60000))
     .then(function(msg) {
       login(msg, _.split(msg.text, '\n', 2)) })
     .catch(function(err) {
-      bot.sendMessage(msg.from.id, 'I can`t help you without a Particle account, sorry.');
+      bot.sendMessage(msg.chat.id, 'I can`t help you without a Particle account, sorry.');
     });
   }
 });
@@ -322,7 +322,7 @@ _.templateSettings.imports = {
   'moment': moment,
   'escape': function(string) { 
     if(string) {
-      if (typeof string != 'String')
+      if (typeof string !== 'string')
         string = String(string);
       return string.replace(/([\*\[\]_`])/g,'\\$1');
     }
@@ -333,9 +333,9 @@ var templates = {
   url: _.template("https://api.particle.io/v1/devices/${ device }/events/${ event }?access_token=${ accessToken }"),
   listen: {
     start: _.template("Ok, from now on I'll report here all events `${ event }` from device *%{ print(escape(device)) }*"),
-    start: _.template("Ok, from now on I'll report here any event from device *%{ print(escape(device)) }*"),
+    startAll: _.template("Ok, from now on I'll report here any event from device *%{ print(escape(device)) }*"),
     stop:  _.template("I'm no more reporting to you events `${ event }` from device *%{ print(escape(device)) }*"),
-    stop:  _.template("All events from *%{ print(escape(device)) }* are going to be ignored. Are you happy now?"),
+    stopAll:  _.template("All events from *%{ print(escape(device)) }* are going to be ignored. Are you happy now?"),
     error: _.template("`${ event }`@*%{ print(escape(device)) }*: `ERROR`"),
     data:  _.template("`${ event }`@*%{ print(escape(device)) }*: `${ data }`"),
     never: _.template("I wasn't listening for events `${ event }` from device *%{ print(escape(device)) }*"),
