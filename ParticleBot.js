@@ -117,7 +117,7 @@ function call(msg, args) {
       .then(bot.waitResponse(msg))
       .then(function(msg) {
         fnArg = msg.text;
-        client.callFunction(client.device.id, fnName, fnArg)
+        return client.callFunction(client.device.id, fnName, fnArg)
         .then(function(response) {
           return bot.sendMessage(msg.from.id, templates.call({device:client.device.name, name: fnName, arg: fnArg, value: response.return_value}), keyboards.commands);
           //return call(msg, [fnName, fnArg]);
@@ -126,7 +126,6 @@ function call(msg, args) {
     });
   }
   return promise.catch(function(err) {
-    console.log(err)
     bot.sendMessage(msg.from.id, templates.error.call({device:client.device.name, name: fnName, arg: fnArg}), keyboards.commands);
   });
 };
@@ -150,7 +149,7 @@ function read(msg, args) {
       .then(bot.waitResponse(msg))
       .then(function(msg) {
         args[0] = varName = msg.text;
-        client.getVariable(client.device.id, varName)
+        return client.getVariable(client.device.id, varName)
         .then(function(response) {
           return bot.sendMessage(msg.from.id, templates.read({device:client.device.name, name: varName, value: response.result}), keyboards.commands);
         });
@@ -159,7 +158,6 @@ function read(msg, args) {
     });
   }
   return promise.catch(function(err) {
-    console.log(err)
     bot.sendMessage(msg.from.id, templates.error.read({device:client.device.name, name: varName}), keyboards.commands);
   });
 };
